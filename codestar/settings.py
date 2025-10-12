@@ -36,7 +36,7 @@ SECRET_KEY = os.environ.get("SECRET_KEY") or get_random_secret_key()
 
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
 ALLOWED_HOSTS = ['8000-mabuhanif-djangoblog-ksvzr3le9w3.ws.codeinstitute-ide.net','.herokuapp.com', 'localhost', '127.0.0.1']
 
