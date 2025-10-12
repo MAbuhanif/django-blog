@@ -15,6 +15,7 @@ from django.contrib.messages import constants as messages
 import os
 import sys
 import dj_database_url
+from django.core.management.utils import get_random_secret_key
 if os.path.isfile('env.py'):
     import env
 
@@ -28,15 +29,16 @@ TEMPLATES_DIR = os.path.join(BASE_DIR, 'templates')
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-# SECRET_KEY = 'django-insecure-ea^&z75(6wjfqkm4s93($9%2!+9-@ie(x+&c@@do(_=deil-oz'
-SECRET_KEY = os.environ.get("SECRET_KEY")
+# Use an environment SECRET_KEY if provided; otherwise generate a random key
+# for development so the project can run without storing secrets in source.
+SECRET_KEY = os.environ.get("SECRET_KEY") or get_random_secret_key()
 
 
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['8000-mabuhanif-djangoblog-ksvzr3le9w3.ws.codeinstitute-ide.net','.herokuapp.com']
+ALLOWED_HOSTS = ['8000-mabuhanif-djangoblog-ksvzr3le9w3.ws.codeinstitute-ide.net','.herokuapp.com', 'localhost', '127.0.0.1']
 
 
 
@@ -104,16 +106,55 @@ WSGI_APPLICATION = 'codestar.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.sqlite3',
-#         'NAME': BASE_DIR / 'db.sqlite3',
-#     }
-# }
+# DATABASES: robust handling for DATABASE_URL environment variable.
+# Some environments may set DATABASE_URL to a bytes-like literal such as
+# "b''" or provide an empty value. Normalize and validate before parsing.
+raw_db_url = os.environ.get("DATABASE_URL")
 
-DATABASES = {
-    'default': dj_database_url.parse(os.environ.get("DATABASE_URL"))
-}
+# If a bytes object somehow got here, decode it.
+if isinstance(raw_db_url, bytes):
+    try:
+        raw_db_url = raw_db_url.decode()
+    except Exception:
+        raw_db_url = None
+
+# Strip common accidental wrapper like "b'...'", 'b"..."'
+if isinstance(raw_db_url, str):
+    raw_db_url = raw_db_url.strip()
+    if raw_db_url.startswith("b'") and raw_db_url.endswith("'"):
+        raw_db_url = raw_db_url[2:-1]
+    elif raw_db_url.startswith('b"') and raw_db_url.endswith('"'):
+        raw_db_url = raw_db_url[2:-1]
+
+# During local development (DEBUG=True) prefer the local sqlite DB unless
+# the developer explicitly opts into using the remote DATABASE_URL by
+# setting USE_REMOTE_DB=1 in the environment. This avoids remote DB auth/SSL
+# errors when credentials are not present locally.
+if DEBUG and raw_db_url and os.environ.get('USE_REMOTE_DB', '0') != '1':
+    raw_db_url = None
+
+if raw_db_url:
+    try:
+        DATABASES = {
+            'default': dj_database_url.parse(raw_db_url)
+        }
+    except Exception:
+        # Parsing failed: fall back to local sqlite and warn on stderr.
+        import sys as _sys
+        _sys.stderr.write('Warning: failed to parse DATABASE_URL; using sqlite fallback.\n')
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': BASE_DIR / 'db.sqlite3',
+            }
+        }
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 if 'test' in sys.argv:
     DATABASES['default']['ENGINE'] = 'django.db.backends.sqlite3'
